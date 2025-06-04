@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
+const connectToMongo = require("./connectors/mongoConnector");
 const { swaggerUi, swaggerSpec } = require("./swagger");
 const requestResponseLogger = require("./middleware/loggerMiddleware");
 const logger = require("./connectors/logger");
@@ -31,6 +32,17 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
+
+// Database connection check
+connectToMongo().then((db) => {
+    db.once("open", () => {
+        logger.info("Database connection is open.");
+    });
+
+    db.on("error", (err) => {
+        logger.error("Database connection error:", err);
+    });
+});
 
 /*******************************************************************************/ 
 /********************************ROUTERS****************************************/
