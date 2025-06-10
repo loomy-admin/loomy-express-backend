@@ -13,8 +13,15 @@ const userSchema = new mongoose.Schema({
         required: true,          
         default: "USER"          
     },
+    age: { type: Number, required: true },
+    grade: { type: Number, required: true },
+    board: { 
+        type: String, 
+        required: true,
+    },
     createdAt: { type: String },
     updatedAt: { type: String },
+    isPremimum: { type: Boolean, default: false },
     isActive: { type: Boolean, default: false }
 });
 
