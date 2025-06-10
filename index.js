@@ -7,6 +7,7 @@ const requestResponseLogger = require("./middleware/loggerMiddleware");
 const logger = require("./connectors/logger");
 const { swaggerAuth } = require("./middleware/swaggerAuth");
 const authRoutes = require("./router/authRoutes");
+const adminRoutes = require("./router/adminRoutes");
 require("dotenv").config(); 
 
 const app = express();
@@ -48,6 +49,7 @@ connectToMongo().then((db) => {
 /********************************ROUTERS****************************************/
 /*******************************************************************************/
 app.use("/v1/api/auth", authRoutes);
+app.use("/v1/api/admin", adminRoutes);
 app.use("/api-docs", swaggerAuth, swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.get("/", (req, res) => {
     logger.info("Welcome Route START");
