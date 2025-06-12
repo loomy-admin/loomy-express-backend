@@ -102,41 +102,24 @@ function userSignip(req, res) {
  *             schema:
  *               type: object
  *               properties:
- *                 user:
- *                   type: object
  *                 token:
+ *                   type: string
+ *                 role:
+ *                   type: string
+ *                 message:
  *                   type: string
  *       400:
  *         description: Email and password are required
  *       401:
  *         description: Invalid credentials
+ *       404:
+ *         description: Not Found
  *       500:
  *         description: Server error
  */
 router.post("/signin", async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ message: 'Email and password are required.' });
-    }
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(401).json({ message: 'Invalid credentials.' });
-    }
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({ message: 'Invalid credentials.' });
-    }
-    const token = jwt.sign(
-      { id: user._id, email: user.email },
-      process.env.JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-    const { password: _, ...userData } = user.toObject();
-    res.json({ user: userData, token });
-  } catch (err) {
-    res.status(500).json({ message: 'Server error.' });
-  }
+  return authHandler.userSigninHandler(req, res);
 });
+
 
 module.exports = router;

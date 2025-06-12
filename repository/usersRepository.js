@@ -42,3 +42,29 @@ exports.insertUser = async (userData) => {
         logger.error("Error in insertUser:", error);
     }
 }
+
+exports.getUserDetails = async (email) => {
+    try {
+        logger.info('usersRepository.getUserDetails START');
+        return await Users.findOne({ email });
+    }
+    catch (error) {
+        logger.error('Error:', error);
+    }
+    finally {
+        logger.info('usersRepository.getUserDetails STOP');
+    }
+}
+
+exports.getUserDetailsUsername = async (userName) => {
+    try {
+        logger.info('usersRepository.getUserDetailsUsername START');
+        return await Users.findOne({ userName });
+    }
+    catch(error) {
+        logger.error('Error:', error);
+    }
+    finally {
+        logger.info('usersRepository.getUserDetailsUsername STOP');
+    }
+}

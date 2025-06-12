@@ -1,5 +1,6 @@
 // Auth Events
 exports.USER_SIGNUP = "user signup"
+exports.USER_SIGNIN = "user signin"
 
 // Fun Fact Events
 exports.FUN_FACT_BULK_INGESTION = "fun fact bulk ingestion"
