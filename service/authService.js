@@ -4,25 +4,30 @@ const logger = require("../connectors/logger");
 const { generateTimeStamp } = require("../util/dateAndTimeUtil");
 const { insertUser, checkUserExistence, getUserDetails, getUserDetailsUsername } = require("../repository/usersRepository");
 const Users = require("../models/Users");
-const { 
+const {
     USER_REGISTERED_SUCCESSFULLY,
-    USER_LOGGED_IN_SUCCESSFULLY 
+    USER_LOGGED_IN_SUCCESSFULLY
 } = require("../constants/general");
-const { 
-    EMAIL_ALREADY_EXISTS, 
-    USERNAME_ALREADY_EXISTS, 
-    PASSWORDS_DO_NOT_MATCH, 
-    PLEASE_PROVIDE_REQUIRED_FIELDS, 
+const {
+    EMAIL_ALREADY_EXISTS,
+    USERNAME_ALREADY_EXISTS,
+    PASSWORDS_DO_NOT_MATCH,
+    PLEASE_PROVIDE_REQUIRED_FIELDS,
     USER_NOT_FOUND,
     EMAIL_OR_USERNAME_ERROR,
     INVALID_PASSWORD,
     INTERNAL_SERVER_ERROR
- } = require("../constants/errorConstants");
+} = require("../constants/errorConstants");
 
 exports.userSignupService = async (req, res) => {
     try {
         logger.info("authService.userSignupService START");
-        const userFields = Object.keys(Users.schema.paths); 
+        const userFields = [
+            'firstName', 'lastName', 'userName', 'email', 'password', 
+            'role', 'age', 'grade', 'board', 'theme', 'avatarType',
+            'createdAt', 'updatedAt', 'isPremimum', 'isActive'
+        ];
+        
         const userData = Object.fromEntries(
             Object.entries(req.body).filter(([key]) => userFields.includes(key))
         );
@@ -46,13 +51,24 @@ exports.userSignupService = async (req, res) => {
 
         const hashedPassword = await bcrypt.hash(userData.password, 10);
         userData.password = hashedPassword;
-        userData.confirmPassword = hashedPassword;
 
         userData.createdAt = generateTimeStamp();
         userData.updatedAt = generateTimeStamp();
         userData.isActive = true;
 
-        await insertUser(userData);
+        const userDataToSave = {
+            first_name: userData.firstName,
+            last_name: userData.lastName,
+            user_name: userData.userName,
+            email: userData.email,
+            password: userData.password,
+            role: "USER",
+            created_at: userData.createdAt,
+            updated_at: userData.updatedAt,
+            is_active: userData.isActive
+        }
+
+        await insertUser(userDataToSave);
         logger.info("authService.userSignupService STOP");
         return res.status(201).json({
             message: USER_REGISTERED_SUCCESSFULLY,
@@ -96,7 +112,7 @@ exports.userSigninService = async (req, res) => {
         if ((email && email !== user.email) || (userName && userName !== user.userName)) {
             logger.info("authService.userSigninService - EMAIL OR USERNAME ERROR STOP");
             return res.status(401).json({ error: EMAIL_OR_USERNAME_ERROR });
-        }        
+        }
 
         // Compare password
         const isPasswordValid = await bcrypt.compare(password, user.password);

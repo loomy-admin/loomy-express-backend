@@ -1,45 +1,50 @@
+const connectToSupabase = require('../connectors/connectToSupabase');
 const logger = require('../connectors/logger');
-const FunFacts = require("../models/FunFacts");
 
+const supabase = connectToSupabase();
+
+// Insert multiple fun facts
 exports.insertManyFF = async (docs) => {
-    try {
-        logger.info("funFactRepository.insertManyFF START");
-        return await FunFacts.insertMany(docs);
-    }
-    catch (error) {
-        logger.error("Error in insertManyFF:", error);
-    }
-    finally {
-        logger.info("funFactRepository.insertManyFF STOP");
-    }
-}
+  try {
+    logger.info("funFactRepository.insertManyFF START");
 
+    // Insert all docs at once (batch insert)
+    const { error } = await supabase
+      .from('fun_facts')
+      .insert(docs); // Supabase supports array inserts
+
+    if (error) {
+      throw error;
+    }
+
+    logger.info("funFactRepository.insertManyFF STOP");
+  } catch (error) {
+    logger.error("Error in insertManyFF:", error);
+    throw error;
+  }
+};
+
+// Get a random fun fact by grade and age
 // exports.getRandomFunFactByGroup = async (age, grade) => {
-//     try {
-//         logger.info("funFactRepository.getRandomFunFactByGroup START");
-//         const result = await FunFacts.aggregate([
-//             {
-//                 $match: {
-//                     $expr: {
-//                         $and: [
-//                             { $lte: [grade, { $arrayElemAt: ["$gradeRange", 1] }] },
-//                             { $gte: [grade, { $arrayElemAt: ["$gradeRange", 0] }] },
-//                             { $lte: [age, { $arrayElemAt: ["$ageRange", 1] }] },
-//                             { $gte: [age, { $arrayElemAt: ["$ageRange", 0] }] },
-//                         ]
-//                     }
-//                 }
-//             },
-//             { $sample: { size: 1 } }
-//         ]);
+//   try {
+//     logger.info("funFactRepository.getRandomFunFactByGroup START");
 
-//         return result[0] || null;
-//     }
-//     catch (error) {
-//         logger.error("Error in getRandomFunFactByGroup:", error);
+//     // Supabase doesn't support `order by random()` directly in query builder
+//     // So fetch filtered results first, then randomly pick one in JS
+//     const { data, error } = await supabase
+//       .from('fun_facts')
+//       .select('*')
+//       .filter('grade_range', 'cs', `{${grade}}`)
+//       .filter('age_range', 'cs', `{${age}}`);
 
-//     }
-//     finally {
-//         logger.info("funFactRepository.getRandomFunFactByGroup STOP");
-//     }
-// }
+//     if (error) throw error;
+
+//     const randomFact = data[Math.floor(Math.random() * data.length)] || null;
+
+//     logger.info("funFactRepository.getRandomFunFactByGroup STOP");
+//     return randomFact;
+//   } catch (error) {
+//     logger.error("Error in getRandomFunFactByGroup:", error);
+//     throw error;
+//   }
+// };

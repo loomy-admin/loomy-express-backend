@@ -1,18 +1,74 @@
+const connectToSupabase = require('../connectors/connectToSupabase'); // your db.js
 const logger = require('../connectors/logger');
-const Event = require('../models/Events');  // Import the Event model
 
-// Insert event logic
+const supabase = connectToSupabase();
+
+// Insert a new event
 const insertEvent = async (eventData) => {
-    try {
-        const event = new Event(eventData);  // Create a new Event instance with event data
-        await event.save();  // Save the event to the database
-        logger.info('Event inserted successfully');
-    } catch (error) {
-        logger.error('Error inserting event:', error);
+  logger.info("eventRepository.insertEvent START");
+
+  const {
+    eventType,
+    userName,
+    URL,
+    ipAddress,
+    httpMethod,
+    requestPayload,
+    createdAt
+  } = eventData;
+
+  try {
+    const { data, error } = await supabase
+      .from('events')
+      .insert([{
+        event_type: eventType,
+        user_name: userName,
+        url: URL,
+        ip_address: ipAddress, // if it's an array column in Supabase, this is fine
+        http_method: httpMethod,
+        request_payload: requestPayload,
+        created_at: createdAt
+      }])
+      .select(); // equivalent to `returning *`
+
+    if (error) {
+      throw error;
     }
+
+    logger.info('Event inserted successfully');
+    return data[0]; // same as result[0]
+  } catch (err) {
+    logger.error('Error inserting event:', err);
+    throw err;
+  } finally {
+    logger.info("eventRepository.insertEvent STOP");
+  }
 };
 
-// Export the insertEvent function to be used in other files
+// Fetch all events
+const getAllEvents = async () => {
+  logger.info("eventRepository.getAllEvents START");
+
+  try {
+    const { data, error } = await supabase
+      .from('events')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      throw error;
+    }
+
+    return data;
+  } catch (err) {
+    logger.error('Error fetching events:', err);
+    throw err;
+  } finally {
+    logger.info("eventRepository.getAllEvents STOP");
+  }
+};
+
 module.exports = {
-    insertEvent
+  insertEvent,
+  getAllEvents,
 };

@@ -1,13 +1,13 @@
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
-const connectToMongo = require("./connectors/mongoConnector");
 const { swaggerUi, swaggerSpec } = require("./swagger");
 const requestResponseLogger = require("./middleware/loggerMiddleware");
 const logger = require("./connectors/logger");
 const { swaggerAuth } = require("./middleware/swaggerAuth");
 const authRoutes = require("./router/authRoutes");
 const adminRoutes = require("./router/adminRoutes");
+const connectToSupabase = require("./connectors/connectToSupabase");
 require("dotenv").config(); 
 
 const app = express();
@@ -34,16 +34,24 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 
-// Database connection check
-connectToMongo().then((db) => {
-    db.once("open", () => {
-        logger.info("Database connection is open.");
-    });
+// Database connection check 
+const supabase = connectToSupabase();
 
-    db.on("error", (err) => {
-        logger.error("Database connection error:", err);
-    });
-});
+(async () => {
+  try {
+    const { error } = await supabase.auth.getSession(); // lightweight check
+
+    if (error) {
+      logger.error("Supabase connection failed at startup:", error);
+      process.exit(1);
+    }
+
+    logger.info("Supabase client is reachable and initialized.");
+  } catch (err) {
+    logger.error("Unexpected error while checking Supabase connection:", err);
+    process.exit(1);
+  }
+})();
 
 /*******************************************************************************/ 
 /********************************ROUTERS****************************************/
