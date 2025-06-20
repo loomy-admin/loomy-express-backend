@@ -23,7 +23,6 @@ const router = express.Router();
  *               - userName
  *               - email
  *               - password
- *               - confirmPassword
  *             properties:
  *               firstName:
  *                 type: string
@@ -39,10 +38,6 @@ const router = express.Router();
  *                 format: email
  *                 example: "johndoe@example.com"
  *               password:
- *                 type: string
- *                 format: password
- *                 example: "securePassword123"
- *               confirmPassword:
  *                 type: string
  *                 format: password
  *                 example: "securePassword123"
