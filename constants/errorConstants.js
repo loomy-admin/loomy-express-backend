@@ -4,6 +4,8 @@ exports.FAILED_TO_HANDLE_USER_SIGNIN = "Failed to handle user signin";
 exports.USER_NOT_FOUND = "User not found";
 exports.EMAIL_OR_USERNAME_ERROR = "Email or username error";
 exports.INVALID_PASSWORD = "Invalid password";
+exports.FAILED_TO_HANDLE_GET_USER_BY_EMAIL = "Failed to handle get user by email request";
+exports.INVALID_EMAIL_FORMAT = "Invalid email format";
 
 //authService.js
 exports.EMAIL_ALREADY_EXISTS = "Email already exists";
