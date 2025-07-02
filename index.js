@@ -8,6 +8,8 @@ const { swaggerAuth } = require("./middleware/swaggerAuth");
 const authRoutes = require("./router/authRoutes");
 const adminRoutes = require("./router/adminRoutes");
 const connectToSupabase = require("./connectors/connectToSupabase");
+const cron = require('node-cron');
+const { incrementBirthdayAges } = require("./util/birthdayAgeUpdater");
 require("dotenv").config(); 
 
 const app = express();
@@ -26,6 +28,7 @@ const corsOptions = {
         "http://localhost:8080",
         "http://localhost:3000",
         "http://localhost:3001",
+        "http://localhost:8081"
     ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
@@ -68,6 +71,10 @@ app.get("/", (req, res) => {
 // Static files
 app.use(express.static(path.join(__dirname, "public")));
 
+cron.schedule('0 0 * * *', () => {
+  logger.info("⏰ Running birthday age updater at midnight");
+  incrementBirthdayAges();
+});
 
 // Start server
 const PORT = 4000;
