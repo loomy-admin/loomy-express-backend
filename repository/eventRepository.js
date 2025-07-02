@@ -9,7 +9,7 @@ const insertEvent = async (eventData) => {
 
   const {
     eventType,
-    userName,
+    email,
     URL,
     ipAddress,
     httpMethod,
@@ -22,7 +22,7 @@ const insertEvent = async (eventData) => {
       .from('events')
       .insert([{
         event_type: eventType,
-        user_name: userName,
+        email: email,
         url: URL,
         ip_address: ipAddress, // if it's an array column in Supabase, this is fine
         http_method: httpMethod,

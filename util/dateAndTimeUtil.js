@@ -37,4 +37,13 @@ function validateDate(value) {
     return true;
 }
 
-module.exports = { generateTimeStamp, validateDate, convertToTimestamp };
+function calculateAgeFromDOB(dob) {
+    if (!dob || !moment(dob, moment.ISO_8601, true).isValid()) return null;
+
+    const birthDate = moment(dob);
+    const today = moment();
+
+    return today.diff(birthDate, 'years');
+}
+
+module.exports = { generateTimeStamp, validateDate, convertToTimestamp, calculateAgeFromDOB };
