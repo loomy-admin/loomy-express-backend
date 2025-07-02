@@ -1,12 +1,12 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const logger = require("../connectors/logger");
-const { generateTimeStamp } = require("../util/dateAndTimeUtil");
-const { insertUser, checkUserExistence, getUserDetails, getUserDetailsUsername } = require("../repository/usersRepository");
-const Users = require("../models/Users");
+const { generateTimeStamp, calculateAgeFromDOB } = require("../util/dateAndTimeUtil");
+const { insertUser, getUserDetails, getUserDetailsUsername, signupWithEmail, signInWithEmail, updateUserByEmail, signinWithGoogleAccessToken } = require("../repository/usersRepository");
 const {
     USER_REGISTERED_SUCCESSFULLY,
-    USER_LOGGED_IN_SUCCESSFULLY
+    USER_LOGGED_IN_SUCCESSFULLY,
+    USER_PROFILE_UPDATED_SUCCESSFULLY
 } = require("../constants/general");
 const {
     EMAIL_ALREADY_EXISTS,
@@ -18,61 +18,94 @@ const {
     INVALID_PASSWORD,
     INTERNAL_SERVER_ERROR
 } = require("../constants/errorConstants");
+const { validateOnboardingPayload } = require("../util/validateOnBoarding");
 
 exports.userSignupService = async (req, res) => {
     try {
         logger.info("authService.userSignupService START");
-        const userFields = [
-            'firstName', 'lastName', 'userName', 'email', 'password', 
-            'role', 'age', 'grade', 'board', 'theme', 'avatarType',
-            'createdAt', 'updatedAt', 'isPremimum', 'isActive'
-        ];
-        
-        const userData = Object.fromEntries(
-            Object.entries(req.body).filter(([key]) => userFields.includes(key))
-        );
+        const { email, password } = req.body;
 
-        const { emailExists, usernameExists } = await checkUserExistence(userData.email, userData.userName);
+        const user = await getUserDetails(email);
+        const timestamp = generateTimeStamp();
+        if (!user) {
+            // ➤ Sign up flow
+            try {
+                await signupWithEmail(email, password);
+            } catch (supabaseError) {
+                logger.error("Supabase signup failed:", supabaseError.message);
+                return res.status(400).json({ error: supabaseError.message });
+            }
 
-        if (emailExists) {
-            logger.info("authService.userSignupService - EMAIL ALREADY EXISTS STOP");
-            return res.status(400).json({ error: EMAIL_ALREADY_EXISTS });
+            const userDataToSave = {
+                email: email,
+                role: "USER",
+                created_at: timestamp,
+                updated_at: timestamp,
+                is_active: true,
+                profileComplete: false,
+                provider: "Email",
+            };
+
+            await insertUser(userDataToSave);
+            logger.info("User signed up and added to DB.");
+            try {
+                const { session, user: supabaseUser, error } = await signInWithEmail(email, password);
+
+                if (error) {
+                    logger.error("Auto-login after signup failed:", error.message);
+                    return res.status(400).json({ error: "Signup succeeded, but auto-login failed" });
+                }
+
+                return res.status(201).json({
+                    message: USER_REGISTERED_SUCCESSFULLY,
+                    type: "signup-login",
+                    token: session?.session?.access_token,
+                    refreshToken: session?.session?.refresh_token,
+                    user: {
+                        email: supabaseUser.email,
+                        id: supabaseUser.id,
+                        role: userDataToSave.role,
+                    },
+                    profileComplete: false,
+                });
+            } catch (autoLoginError) {
+                logger.error("Exception in auto-login after signup:", autoLoginError.message);
+                return res.status(400).json({ error: "Signup succeeded, but auto-login failed" });
+            }
+        } else {
+            try {
+                if (user.provider !== 'Email') {
+                    return res.status(400).json({
+                        error: `This email is registered using ${user.login_provider}. Please continue using ${user.login_provider} login.`,
+                    });
+                }
+                const { session, user: supabaseUser, error } = await signInWithEmail(email, password);
+
+                if (error) {
+                    logger.error("Supabase login failed:", error.message);
+                    return res.status(400).json({ error: "Invalid credentials" });
+                }
+
+                logger.info("User authenticated via Supabase");
+                return res.status(200).json({
+                    message: USER_LOGGED_IN_SUCCESSFULLY,
+                    type: "signin",
+                    token: session?.session?.access_token,
+                    refreshToken: session?.session?.refresh_token,
+                    user: {
+                        email: supabaseUser.email,
+                        id: supabaseUser.id,
+                        role: user.role,
+                    },
+                    profileComplete: true
+                    // profileComplete: user.profileComplete
+                });
+
+            } catch (loginError) {
+                logger.error("Supabase signin error:", loginError.message);
+                return res.status(400).json({ error: "Invalid credentials" });
+            }
         }
-
-        if (usernameExists) {
-            logger.info("authService.userSignupService - USERNAME ALREADY EXISTS STOP");
-            return res.status(400).json({ error: USERNAME_ALREADY_EXISTS });
-        }
-
-        if (userData.password !== userData.confirmPassword) {
-            logger.info("authService.userSignupService - PASSWORDS DO NOT MATCH STOP");
-            return res.status(400).json({ error: PASSWORDS_DO_NOT_MATCH });
-        }
-
-        const hashedPassword = await bcrypt.hash(userData.password, 10);
-        userData.password = hashedPassword;
-
-        userData.createdAt = generateTimeStamp();
-        userData.updatedAt = generateTimeStamp();
-        userData.isActive = true;
-
-        const userDataToSave = {
-            first_name: userData.firstName,
-            last_name: userData.lastName,
-            user_name: userData.userName,
-            email: userData.email,
-            password: userData.password,
-            role: "USER",
-            created_at: userData.createdAt,
-            updated_at: userData.updatedAt,
-            is_active: userData.isActive
-        }
-
-        await insertUser(userDataToSave);
-        logger.info("authService.userSignupService STOP");
-        return res.status(201).json({
-            message: USER_REGISTERED_SUCCESSFULLY,
-        });
     }
     catch (error) {
         logger.error("Error in userSignupService:", error);
@@ -144,3 +177,185 @@ exports.userSigninService = async (req, res) => {
         return res.status(500).json({ error: INTERNAL_SERVER_ERROR });
     }
 }
+
+exports.googleSigninService = async (req, res) => {
+    try {
+        const { access_token, full_name } = req.body;
+
+        if (!access_token) {
+            return res.status(400).json({ error: "Google access_token required" });
+        }
+
+        // 🔐 Step 1: Get Google User Info
+        const userInfoResponse = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+            headers: {
+                Authorization: `Bearer ${access_token}`,
+            },
+        });
+
+        if (!userInfoResponse.ok) {
+            const errorText = await userInfoResponse.text();
+            logger.error("Google user info fetch failed:", errorText);
+            return res.status(401).json({ error: "Invalid Google access_token" });
+        }
+
+        const googleUser = await userInfoResponse.json();
+        const email = googleUser.email;
+        const timestamp = generateTimeStamp();
+
+        // 🔍 Step 2: Check custom user table
+        let existingUser = await getUserDetails(email);
+
+        const userDataToSave = {
+            email,
+            full_name: full_name || googleUser.name,
+            role: "USER",
+            provider: "Google",
+            profileComplete: existingUser?.profileComplete ?? false,
+            is_active: true,
+            updated_at: timestamp,
+        };
+
+        // 📝 Step 3: Insert or update user
+        if (!existingUser) {
+            await insertUser({
+                ...userDataToSave,
+                created_at: timestamp,
+            });
+        } else {
+            await updateUserByEmail(email, userDataToSave);
+        }
+
+        // 🔑 Step 4: Generate your own JWT
+        const jwtPayload = {
+            email,
+            role: userDataToSave.role,
+            provider: "Google",
+        };
+
+        const token = jwt.sign(jwtPayload, process.env.JWT_SECRET, { expiresIn: "8h" });
+        const refreshToken = jwt.sign(jwtPayload, process.env.JWT_REFRESH_SECRET, { expiresIn: "7d" });
+
+        // ✅ Step 5: Return JWT + user info
+        return res
+            .cookie("refreshToken", refreshToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === "production",
+                sameSite: "Strict",
+                maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+            })
+            .status(200)
+            .json({
+                message: USER_LOGGED_IN_SUCCESSFULLY,
+                token: token,
+                user: { email, role: userDataToSave.role },
+                profileComplete: userDataToSave.profileComplete,
+            });
+    } catch (error) {
+        logger.error("Error in googleSigninService:", error);
+        return res.status(500).json({ error: INTERNAL_SERVER_ERROR });
+    }
+};
+
+exports.onBoardingService = async (req, res) => {
+    try {
+        logger.info("authService.onBoardingService START");
+        const email = req.user.email;
+        const { fullName, dob, grade, board } = req.body;
+        const timestamp = generateTimeStamp();
+        const age = calculateAgeFromDOB(dob);
+
+        const validationError = validateOnboardingPayload({ dob, grade, board });
+        if (validationError) return res.status(400).json({ error: validationError });
+
+        logger.info(email)
+
+        const updatedUser = await updateUserByEmail(email, {
+            full_name: fullName,
+            dob,
+            grade,
+            board,
+            age,
+            updated_at: timestamp,
+            profileComplete: true,
+        });
+
+        if (!updatedUser) {
+            return res.status(404).json({ error: USER_NOT_FOUND });
+        }
+
+        logger.info("authService.onBoardingService STOP");
+        return res.status(200).json({ message: USER_PROFILE_UPDATED_SUCCESSFULLY });
+
+    }
+    catch (error) {
+        logger.error("Error in onBoardingService:", error);
+        return res.status(500).json({ error: INTERNAL_SERVER_ERROR });
+    }
+};
+
+
+// exports.googleSigninService = async (req, res) => {
+//     try {
+//         logger.info("authService.googleSigninService START");
+//         const { id_token, access_token, profile } = req.body;
+//         const timestamp = generateTimeStamp();
+//         const email = profile?.email;
+//         const full_name = profile?.name;
+//         logger.info(req.body);
+
+//         if (!id_token || !email) {
+//             return res.status(400).json({ error: "Missing id_token or profile.email" });
+//         }
+
+//         const { data, error } = await signinWithGoogleAuth(id_token);
+
+
+//         if (error) {
+//             logger.error("Supabase signin error:", error);
+//             return res.status(400).json({ error: error.message });
+//         }
+
+//         // 2. Check custom users table
+//         const existingUser = await getUserDetails(email);
+
+//         const userDataToSave = {
+//             email: profile.email,
+//             full_name: profile.name,
+//             role: "USER",
+//             profileComplete: false,
+//             updated_at: timestamp,
+//             provider: "Google"
+//         };
+
+//         if (existingUser) {
+//             if (existingUser.provider !== 'Google') {
+//                 logger.warn(`User exists with provider ${existingUser.login_provider}, not Google.`);
+//                 return res.status(400).json({
+//                     error: `This email is registered using ${existingUser.login_provider}. Please continue using ${existingUser.login_provider} login.`,
+//                 });
+//             }
+
+//             await updateUserByEmail(email, userDataToSave);
+//             logger.info("User profile updated for Google login.");
+//         } else {
+//             await insertUser({ ...userDataToSave, id: data.user.id, created_at: timestamp });
+//             logger.info("User profile created for Google login.");
+//         }
+//         logger.info("usersRepository.signinWithGoogleAuth STOP");
+//         return {
+//             access_token: data.session.access_token,
+//             refresh_token: data.session.refresh_token,
+//             user: {
+//                 email: email,
+//                 id: data.user.id,
+//                 role: "USER",
+//             },
+//             profileComplete: existingUser?.profileComplete ?? false,
+//         };
+//     }
+//     catch (error) {
+//         logger.error("Error in googleSigninService:", error);
+//         return res.status(500).json({ error: INTERNAL_SERVER_ERROR });
+//     }
+// }
