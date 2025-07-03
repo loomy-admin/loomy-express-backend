@@ -1,6 +1,8 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const logger = require("../connectors/logger");
+const { generateTimeStamp } = require("../util/dateAndTimeUtil");
+const { insertUser, checkUserExistence, getUserDetails, getUserDetailsUsername } = require("../repository/usersRepository");
 const { generateTimeStamp, calculateAgeFromDOB } = require("../util/dateAndTimeUtil");
 const { insertUser, getUserDetails, getUserDetailsUsername, signupWithEmail, signInWithEmail, updateUserByEmail, signinWithGoogleAccessToken } = require("../repository/usersRepository");
 const {
@@ -16,10 +18,12 @@ const {
     USER_NOT_FOUND,
     EMAIL_OR_USERNAME_ERROR,
     INVALID_PASSWORD,
-    INTERNAL_SERVER_ERROR
+    INTERNAL_SERVER_ERROR,
+    INVALID_EMAIL_FORMAT
 } = require("../constants/errorConstants");
 const { validateOnboardingPayload } = require("../util/validateOnBoarding");
 const { updateUserStreak } = require("./streakService");
+const { USER_DETAILS_RETRIEVED_SUCCESSFULLY } = require("../constants/general");
 
 exports.userSignupService = async (req, res) => {
     try {
@@ -190,6 +194,52 @@ exports.userSigninService = async (req, res) => {
         return res.status(500).json({ error: INTERNAL_SERVER_ERROR });
     }
 }
+
+exports.getUserByEmailService = async (req, res) => {
+  try {
+    logger.info("authService.getUserByEmailService START");
+    
+    const { email } = req.params;
+    
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      logger.info("authService.getUserByEmailService - INVALID EMAIL FORMAT STOP");
+      return res.status(400).json({ error: INVALID_EMAIL_FORMAT });
+    }
+    
+    // Get user details from repository
+    const user = await getUserDetails(email.trim());
+    
+    if (!user || user.is_active === false) {
+      logger.info("authService.getUserByEmailService - USER NOT FOUND OR INACTIVE STOP");
+      return res.status(404).json({ error: USER_NOT_FOUND });
+    }
+    
+    // Remove sensitive information before sending response
+    const sanitizedUser = {
+      id: user.id,
+      first_name: user.first_name,
+      last_name: user.last_name,
+      user_name: user.user_name,
+      email: user.email,
+      role: user.role,
+      created_at: user.created_at,
+      updated_at: user.updated_at,
+      is_active: user.is_active
+    };
+    
+    logger.info("authService.getUserByEmailService STOP");
+    return res.status(200).json({
+      success: true,
+      message: USER_DETAILS_RETRIEVED_SUCCESSFULLY,
+      data: sanitizedUser
+    });
+  } catch (error) {
+    logger.error("Error in getUserByEmailService:", error);
+    return res.status(500).json({ error: INTERNAL_SERVER_ERROR });
+  }
+};
 
 exports.googleSigninService = async (req, res) => {
     try {
