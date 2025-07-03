@@ -22,8 +22,8 @@ const {
     INVALID_EMAIL_FORMAT
 } = require("../constants/errorConstants");
 const { validateOnboardingPayload } = require("../util/validateOnBoarding");
+const { updateUserStreak } = require("./streakService");
 const { USER_DETAILS_RETRIEVED_SUCCESSFULLY } = require("../constants/general");
-
 
 exports.userSignupService = async (req, res) => {
     try {
@@ -61,6 +61,9 @@ exports.userSignupService = async (req, res) => {
                     return res.status(400).json({ error: "Signup succeeded, but auto-login failed" });
                 }
 
+                // Update streak on signup
+                const streak = await updateUserStreak(email);
+
                 return res.status(201).json({
                     message: USER_REGISTERED_SUCCESSFULLY,
                     type: "signup-login",
@@ -70,6 +73,7 @@ exports.userSignupService = async (req, res) => {
                         email: supabaseUser.email,
                         id: supabaseUser.id,
                         role: userDataToSave.role,
+                        streak,
                     },
                     profileComplete: false,
                 });
@@ -92,6 +96,9 @@ exports.userSignupService = async (req, res) => {
                 }
 
                 logger.info("User authenticated via Supabase");
+                // Update streak on login
+                const streak = await updateUserStreak(email);
+
                 return res.status(200).json({
                     message: USER_LOGGED_IN_SUCCESSFULLY,
                     type: "signin",
@@ -101,6 +108,7 @@ exports.userSignupService = async (req, res) => {
                         email: supabaseUser.email,
                         id: supabaseUser.id,
                         role: user.role,
+                        streak,
                     },
                     profileComplete: true
                     // profileComplete: user.profileComplete
@@ -171,11 +179,15 @@ exports.userSigninService = async (req, res) => {
             expiresIn: "8h",
         });
 
+        // Update streak on login
+        const streak = await updateUserStreak(user.email);
+
         logger.info("authService.userSigninService STOP");
         return res.status(200).json({
             token: token,
             role: user.role,
             message: USER_LOGGED_IN_SUCCESSFULLY,
+            streak,
         });
     } catch (error) {
         logger.error("Error in userSigninService:", error);
@@ -288,6 +300,9 @@ exports.googleSigninService = async (req, res) => {
         const refreshToken = jwt.sign(jwtPayload, process.env.JWT_REFRESH_SECRET, { expiresIn: "7d" });
 
         // ✅ Step 5: Return JWT + user info
+        // After successful Google sign-in, update streak
+        const streak = await updateUserStreak(email);
+
         return res
             .cookie("refreshToken", refreshToken, {
                 httpOnly: true,
@@ -301,6 +316,7 @@ exports.googleSigninService = async (req, res) => {
                 token: token,
                 user: { email, role: userDataToSave.role },
                 profileComplete: userDataToSave.profileComplete,
+                streak,
             });
     } catch (error) {
         logger.error("Error in googleSigninService:", error);
