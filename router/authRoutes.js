@@ -2,6 +2,7 @@ const express = require("express");
 const authHandler = require("../handlers/authHandler");
 const jwtVerifier = require("../middleware/jwtVerifier");
 const router = express.Router();
+const { updateUserStreak } = require('../service/streakService');
 
 /**
  * @swagger
@@ -316,11 +317,20 @@ router.post("/logout", (req, res) => {
   return res.status(200).json({ message: "Logged out" });
 });
 
+// App open streak endpoint
+router.post('/app-open', jwtVerifier, async (req, res) => {
+  try {
+    const email = req.user.email;
+    const streak = await updateUserStreak(email);
+    res.json({ streak });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // router.post("/googleAuth", googleSignin);
 // function googleSignin(req, res) {
 //   return authHandler.googleSigninHandler(req, res);
 // };
-
 
 module.exports = router;
